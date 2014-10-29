@@ -19,6 +19,7 @@ local gesture = {
 	"TAP",
 	"PINCH",
     "PRESS",
+    "DOUBLE_TAP",
 }
 
 function ejoy2d.start(callback)
@@ -33,7 +34,13 @@ function ejoy2d.start(callback)
 	end
 	fw.EJOY2D_MESSAGE = assert(callback.message)
   	fw.EJOY2D_HANDLE_ERROR = assert(callback.handle_error)
+  	fw.EJOY2D_RESUME = assert(callback.on_resume)
+		fw.EJOY2D_PAUSE = assert(callback.on_pause)
 	fw.inject()
+end
+
+function ejoy2d.clear(color)
+	return shader.clear(color)
 end
 
 return ejoy2d

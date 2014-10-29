@@ -57,4 +57,51 @@ screen_scissor(int x, int y, int w, int h) {
 	glScissor(x,y,w,h);
 }
 
+bool screen_is_visible(float x,float y)
+{
+	return x >= 0.0f && x <= 2.0f && y>=-2.0f && y<= 0.0f;
+}
+bool screen_is_poly_invisible(const float* points,int len,int stride)
+{
+	int i =0;
+	// test left of x
+	bool invisible = true;
+	for(i =0; i < len && invisible;++i)
+	{
+		if(points[i*stride] >= 0.0f)
+			invisible = false;
+	}
+	if(invisible)
+		return true;
+	
+	// test right of axis x
+	invisible = true;
+	for(i =0; i < len && invisible;++i)
+	{
+		if(points[i*stride] <= 2.0f)
+			invisible = false;
+	}
+	if(invisible)
+		return true;
+
+	// test above of axis y
+	invisible = true;
+	for(i =0; i < len && invisible;++i)
+	{
+		if(points[i*stride +1] >= -2.0f)
+			invisible = false;
+	}
+	if(invisible)
+		return true;
+	
+	// test below of axis y
+	invisible = true;
+	for(i =0; i < len && invisible;++i)
+	{
+		if(points[i*stride +1] <= 0.0f)
+			invisible = false;
+	}
+	return invisible;
+}
+
 

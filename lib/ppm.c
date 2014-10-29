@@ -133,6 +133,7 @@ loadppm_from_file(FILE *rgb, FILE *alpha, struct ppm *ppm) {
 			if (!ppm_header(alpha, ppm)) {
 				return 0;
 			}
+			alpha_id = ppm->type;
 		} else {
 			struct ppm pgm;
 			if (!ppm_header(alpha, &pgm)) {
@@ -462,6 +463,13 @@ saveppm(lua_State *L) {
 
 	return 0;
 }
+static int
+unload_tex(struct lua_State* L)
+{
+	int id = (int) luaL_checkinteger(L, 1);
+	texture_unload(id);
+	return 0;
+}
 
 int 
 ejoy2d_ppm(lua_State *L) {
@@ -469,6 +477,7 @@ ejoy2d_ppm(lua_State *L) {
 		{ "texture", loadtexture },
 		{ "load", loadppm },
 		{ "save", saveppm },
+		{ "unload",unload_tex},
 		{ NULL, NULL },
 	};
 

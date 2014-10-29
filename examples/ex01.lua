@@ -29,6 +29,7 @@ function game.update()
 end
 
 function game.drawframe()
+	ej.clear(0xff808080)	-- clear (0.5,0.5,0.5,1) gray
 	obj:draw(screencoord)
 	obj2:draw(screencoord)
 end
@@ -40,6 +41,12 @@ function game.message(...)
 end
 
 function game.handle_error(...)
+end
+
+function game.on_resume()
+end
+
+function game.on_pause()
 end
 
 ej.start(game)
