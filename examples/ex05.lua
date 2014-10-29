@@ -26,6 +26,7 @@ function game.update()
 end
 
 function game.drawframe()
+	ej.clear()
 	obj:draw(screencoord)
 	-- If anchor is visible, obj:draw will update anchor's world_matrix
 	label.matrix = anchor.world_matrix
@@ -39,6 +40,12 @@ function game.message(...)
 end
 
 function game.handle_error(...)
+end
+
+function game.on_resume()
+end
+
+function game.on_pause()
 end
 
 ej.start(game)

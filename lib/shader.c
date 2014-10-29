@@ -8,8 +8,8 @@
 #include <string.h>
 #include <assert.h>
 
-#define MAX_COMMBINE 64
-#define MAX_PROGRAM 6
+#define MAX_COMMBINE 1024
+#define MAX_PROGRAM 8
 
 #define ATTRIB_VERTEX 0
 #define ATTRIB_TEXTCOORD 1
@@ -20,7 +20,11 @@
 struct program {
 	GLuint prog;
 	GLint additive;
-	uint32_t arg;
+	uint32_t arg_additive;
+	
+	GLint mask;
+  float arg_mask_x;
+  float arg_mask_y;
 };
 
 struct vertex {
@@ -50,7 +54,8 @@ static struct render_state *RS = NULL;
 
 void
 shader_init() {
-	assert(RS == NULL);
+	if (RS) return;
+
 	struct render_state * rs = (struct render_state *) malloc(sizeof(*rs));
 	memset(rs, 0 , sizeof(*rs));
 	rs->current_program = -1;
@@ -60,7 +65,7 @@ shader_init() {
 	glGenBuffers(1, &rs->index_buffer);
 	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, rs->index_buffer);
 
-	GLubyte idxs[6 * MAX_COMMBINE];
+	GLushort idxs[6 * MAX_COMMBINE];
 	int i;
 	for (i=0;i<MAX_COMMBINE;i++) {
 		idxs[i*6] = i*4;
@@ -71,7 +76,7 @@ shader_init() {
 		idxs[i*6+5] = i*4+3;
 	}
 	
-	glBufferData(GL_ELEMENT_ARRAY_BUFFER, 6*MAX_COMMBINE, idxs, GL_STATIC_DRAW);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(idxs), idxs, GL_STATIC_DRAW);
 
 	glGenBuffers(1, &rs->vertex_buffer);
 	glBindBuffer(GL_ARRAY_BUFFER, rs->vertex_buffer);
@@ -79,6 +84,21 @@ shader_init() {
 	glEnable(GL_BLEND);
 
 	RS = rs;
+}
+void
+shader_reset()
+{
+	glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+	glEnable(GL_BLEND);
+
+	if (RS->current_program != -1)
+	{
+		glUseProgram(RS->program[RS->current_program].prog);
+	}
+
+	glBindTexture(GL_TEXTURE_2D, RS->tex);
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, RS->index_buffer);
+	glBindBuffer(GL_ARRAY_BUFFER, RS->vertex_buffer);
 }
 
 static GLuint
@@ -157,9 +177,16 @@ program_init(struct program * p, const char *FS, const char *VS) {
 	link(p);
 
 	p->additive = glGetUniformLocation(p->prog, "additive");
-	p->arg = 0;
+	p->arg_additive = 0;
 	set_color(p->additive, 0);
 	
+	p->mask = glGetUniformLocation(p->prog, "mask");
+  p->arg_mask_x = 0.0f;
+  p->arg_mask_y = 0.0f;
+  if (p->mask != -1) {
+    glUniform2f(p->mask, 0.0f, 0.0f);
+  }
+		
 	glDetachShader(p->prog, fs);
 	glDeleteShader(fs);
 	glDetachShader(p->prog, vs);
@@ -195,10 +222,21 @@ shader_unload() {
 	RS = NULL;
 }
 
+static int drawcall = 0;
+void
+reset_drawcall_count() {
+	drawcall = 0;
+}
+int
+drawcall_count() {
+	return drawcall;
+}
+
 static void
 rs_commit() {
 	if (RS->object == 0)
 		return;
+	drawcall++;
 	glBindBuffer(GL_ARRAY_BUFFER, RS->vertex_buffer);
 	glBufferData(GL_ARRAY_BUFFER, sizeof(struct quad) * RS->object, RS->vb, GL_DYNAMIC_DRAW);
 
@@ -208,7 +246,7 @@ rs_commit() {
 	glVertexAttribPointer(ATTRIB_TEXTCOORD, 2, GL_FLOAT, GL_FALSE, sizeof(struct vertex), BUFFER_OFFSET(8));
 	glEnableVertexAttribArray(ATTRIB_COLOR);
 	glVertexAttribPointer(ATTRIB_COLOR, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(struct vertex), BUFFER_OFFSET(16));
-	glDrawElements(GL_TRIANGLES, 6 * RS->object, GL_UNSIGNED_BYTE, 0);
+	glDrawElements(GL_TRIANGLES, 6 * RS->object, GL_UNSIGNED_SHORT, 0);
 	RS->object = 0;
 }
 
@@ -229,11 +267,24 @@ shader_program(int n, uint32_t arg) {
 		glUseProgram(RS->program[n].prog);
 	}
 	struct program *p = &RS->program[RS->current_program];
-	if (p->arg != arg) {
+	if (p->arg_additive != arg) {
 		rs_commit();
-		p->arg = arg;
+		p->arg_additive = arg;
 		set_color(p->additive, arg);
 	}
+}
+
+void
+shader_mask(float x, float y) {
+	struct program *p = &RS->program[RS->current_program];
+  if (!p || p->mask == -1)
+    return;
+  if (p->arg_mask_x == x && p->arg_mask_y == y)
+    return;
+  p->arg_mask_x = x;
+  p->arg_mask_y = y;
+  rs_commit();
+	glUniform2f(p->mask, x, y);
 }
 
 void
@@ -255,32 +306,27 @@ shader_draw(const float vb[16], uint32_t color) {
 	}
 }
 
+static void
+draw_quad(const float *vbp, uint32_t color, int max, int index) {
+	float vb[16];
+	int i;
+	memcpy(vb, vbp, 4 * sizeof(float));	// first point
+	for (i=1;i<4;i++) {
+		int j = i + index;
+		int n = (j <= max) ? j : max;
+		memcpy(vb + i * sizeof(float), vbp + n * sizeof(float), 4 * sizeof(float));
+	}
+	shader_draw(vb, color);
+}
+
 void
 shader_drawpolygon(int n, const float *vb, uint32_t color) {
-	rs_commit();
-	ARRAY(struct vertex, p, n);
-	int i;
-	for (i=0;i<n;i++) {
-		p[i].vx = vb[i*4+0];
-		p[i].vy = vb[i*4+1];
-		p[i].tx = vb[i*4+2];
-		p[i].ty = vb[i*4+3];
-		p[i].rgba[0] = (color >> 16) & 0xff;
-		p[i].rgba[1] = (color >> 8) & 0xff;
-		p[i].rgba[2] = (color) & 0xff;
-		p[i].rgba[3] = (color >> 24) & 0xff;
-	}
-	
-	glBindBuffer(GL_ARRAY_BUFFER, RS->vertex_buffer);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(struct vertex) * n, (void*)p, GL_DYNAMIC_DRAW);
-
-	glEnableVertexAttribArray(ATTRIB_VERTEX);
-	glVertexAttribPointer(ATTRIB_VERTEX, 2, GL_FLOAT, GL_FALSE, sizeof(struct vertex), BUFFER_OFFSET(0));
-	glEnableVertexAttribArray(ATTRIB_TEXTCOORD);
-	glVertexAttribPointer(ATTRIB_TEXTCOORD, 2, GL_FLOAT, GL_FALSE, sizeof(struct vertex), BUFFER_OFFSET(8));
-	glEnableVertexAttribArray(ATTRIB_COLOR);
-	glVertexAttribPointer(ATTRIB_COLOR, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(struct vertex), BUFFER_OFFSET(16));
-	glDrawArrays(GL_TRIANGLE_FAN, 0, n);
+	int i = 0;
+	--n;
+	do {
+		draw_quad(vb, color, n, i);
+		i+=2;
+	} while (i<n-1);
 }
 
 void 

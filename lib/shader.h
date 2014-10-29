@@ -15,11 +15,18 @@ void shader_unload();
 void shader_blend(int m1,int m2);
 void shader_defaultblend();
 void shader_texture(int id);
+void shader_mask(float x, float y);
 void shader_draw(const float vb[16],uint32_t color);
 void shader_drawpolygon(int n, const float *vb, uint32_t color);
 void shader_program(int n, uint32_t arg);
 void shader_flush();
 
+// 还原当前的环境，比如rt渲染之后
+void shader_reset();
+
 int ejoy2d_shader(lua_State *L);
 
+
+void reset_drawcall_count();
+int drawcall_count();
 #endif
